@@ -280,7 +280,7 @@ const Form = () => {
           minHeight: { xs: "60vh", md: "94.5vh" },
           width: { xs: "100%", md: "50%" },
           backgroundColor: "#111111",
-          backgroundImage: "url('./assets/images/bg-space.jpeg')",
+          backgroundImage: "url('/assets/images/bg-space.jpeg')",
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
