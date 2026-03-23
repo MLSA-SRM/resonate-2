@@ -1,0 +1,1138 @@
+import { useState } from "react";
+import axios from "axios";
+import {
+  Container,
+  TextField,
+  Button,
+  Typography,
+  Paper,
+  Box,
+  MenuItem,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Divider,
+  StepLabel,
+  Step,
+  Stepper,
+} from "@mui/material";
+import { motion } from "framer-motion";
+
+const Form = () => {
+  const [formData, setFormData] = useState({
+    teamName: "",
+    numberOfMembers: "",
+    trackChoice: "",
+    members: [], // Will store all members including leader
+    paymentProof: null,
+  });
+
+  const [errors, setErrors] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Generate dynamic steps based on number of members
+  const getSteps = () => {
+    const baseSteps = ["About", "Team Details"];
+    const numMembers = parseInt(formData.numberOfMembers) || 0;
+    
+    for (let i = 1; i <= numMembers; i++) {
+      if (i === 1) {
+        baseSteps.push("Member 1 (Leader)");
+      } else {
+        baseSteps.push(`Member ${i}`);
+      }
+    }
+    
+    baseSteps.push("Payment");
+    return baseSteps;
+  };
+
+  const steps = getSteps();
+
+  const validate = (step) => {
+    const newErrors = {};
+    const numMembers = parseInt(formData.numberOfMembers) || 0;
+    
+    if (step === 0) {
+      // About the Event step - no validation needed
+      return newErrors;
+    } else if (step === 1) {
+      // Team Details validation
+      if (!formData.teamName.trim()) {
+        newErrors.teamName = "Team name is required";
+      }
+      if (!formData.numberOfMembers) {
+        newErrors.numberOfMembers = "Please select number of members";
+      }
+      if (!formData.trackChoice) {
+        newErrors.trackChoice = "Please select a hackathon track";
+      }
+    } else if (step >= 2 && step < 2 + numMembers) {
+      // Member validation
+      const memberIndex = step - 2;
+      const member = formData.members[memberIndex];
+      
+      if (!member || !member.name || !member.name.trim()) {
+        newErrors.name = "Name is required";
+      } else if (!/^[a-zA-Z\s]+$/.test(member.name)) {
+        newErrors.name = "Name should contain only alphabets";
+      }
+      
+      if (!member || !member.registerNumber || !member.registerNumber.trim()) {
+        newErrors.registerNumber = "Register number is required";
+      } else if (!/^RA[0-9]{13}$/.test(member.registerNumber)) {
+        newErrors.registerNumber = "Register number must be in the format RA followed by 13 digits";
+      }
+      
+      if (!member || !member.residentialStatus) {
+        newErrors.residentialStatus = "Please select residential status";
+      }
+      
+      // Leader-specific validations (Member 1)
+      if (memberIndex === 0) {
+        if (!member || !member.personalEmail || !member.personalEmail.trim()) {
+          newErrors.personalEmail = "Personal email is required";
+        } else if (!/^\S+@\S+\.\S+$/.test(member.personalEmail)) {
+          newErrors.personalEmail = "Please enter a valid email address";
+        }
+        
+        if (!member || !member.phoneNumber || !member.phoneNumber.trim()) {
+          newErrors.phoneNumber = "Phone number is required";
+        } else if (!/^\d{10}$/.test(member.phoneNumber)) {
+          newErrors.phoneNumber = "Phone number should be 10 digits";
+        }
+      }
+    } else if (step === 2 + numMembers) {
+      // Payment validation
+      if (!formData.paymentProof) {
+        newErrors.paymentProof = "Payment proof is required";
+      }
+    }
+    return newErrors;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value,
+    });
+    
+    // Initialize members array when numberOfMembers changes
+    if (name === "numberOfMembers") {
+      const numMembers = parseInt(value);
+      const newMembers = Array(numMembers).fill(null).map((_, index) => 
+        formData.members[index] || {
+          name: "",
+          registerNumber: "",
+          residentialStatus: "",
+          // Leader-specific fields (only for index 0)
+          ...(index === 0 ? {
+            personalEmail: "",
+            phoneNumber: "",
+          } : {})
+        }
+      );
+      setFormData(prev => ({
+        ...prev,
+        numberOfMembers: value,
+        members: newMembers,
+      }));
+    }
+  };
+
+  const handleMemberChange = (memberIndex, field, value) => {
+    const newMembers = [...formData.members];
+    newMembers[memberIndex] = {
+      ...newMembers[memberIndex],
+      [field]: value,
+    };
+    setFormData({
+      ...formData,
+      members: newMembers,
+    });
+  };
+
+  // Handle register number input (convert to uppercase)
+  const handleRegisterNumberChange = (memberIndex, value) => {
+    handleMemberChange(memberIndex, "registerNumber", value.toUpperCase());
+  };
+
+  // Handle phone number input and restrict to 10 digits (leader only)
+  const handlePhoneNumberChange = (value) => {
+    if (/^\d{0,10}$/.test(value)) {
+      const newMembers = [...formData.members];
+      newMembers[0] = {
+        ...newMembers[0],
+        phoneNumber: value,
+      };
+      setFormData({
+        ...formData,
+        members: newMembers,
+      });
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFormData({
+        ...formData,
+        paymentProof: file,
+      });
+    }
+  };
+
+  const handleNext = () => {
+    const validationErrors = validate(activeStep);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+    } else {
+      setErrors({});
+      setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    }
+  };
+
+  const handleBack = () => {
+    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const validationErrors = validate(activeStep);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+    } else {
+      setLoading(true);
+      try {
+        const formDataToSend = new FormData();
+        formDataToSend.append('teamName', formData.teamName);
+        formDataToSend.append('numberOfMembers', formData.numberOfMembers);
+        formDataToSend.append('trackChoice', formData.trackChoice);
+        formDataToSend.append('members', JSON.stringify(formData.members));
+        formDataToSend.append('paymentProof', formData.paymentProof);
+
+        const response = await axios.post(
+          `${import.meta.env.VITE_BACKEND_URL}/api/form`,
+          formDataToSend,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+        if (response.status === 201) {
+          setSubmitted(true);
+        }
+      } catch (err) {
+        if (err.response && err.response.status === 400) {
+          setDuplicateDialogOpen(true);
+        } else {
+          alert("Error submitting form");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const errorStyle = {
+    color: "#F28B82", // Light shade of red
+    mt: 1,
+    textAlign: "right",
+  };
+
+  return (
+    <Container
+      maxWidth="lg"
+      component={motion.div}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh",
+        padding: "0",
+        margin: 0,
+        minWidth: "100vw",
+        backgroundColor: "#111111",
+      }}
+    >
+      {/* Left Box with Background and Typography */}
+      <Box
+        component={motion.div}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          minHeight: { xs: "60vh", md: "94.5vh" },
+          width: { xs: "100%", md: "50%" },
+          backgroundColor: "#111111",
+          backgroundImage: "url('./assets/images/bg-space.jpeg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          padding: { xs: "0px 0px 0px 50px", md: "0px 0px 0px 70px" },
+        }}
+      >
+        
+      </Box>
+
+      {/* Right Box with Form */}
+      <Box
+        component={motion.div}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "94.5vh",
+          backgroundColor: "#111111",
+          padding: { xs: "20px 0px 0px 0px", md: "0px" },
+          margin: 0,
+          flexGrow: 1,
+        }}
+      >
+        {submitted ? (
+          <Paper
+            elevation={3}
+            sx={{
+              p: { xs: 2, md: 4 },
+              backgroundColor: "#111",
+              borderRadius: 2,
+              width: { xs: "80vw", md: "100%" },
+              maxWidth: { xs: "400px", md: "590px" },
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Registration Details */}
+            {/* The rest of the submitted content */}
+            <Stepper
+              activeStep={4}
+              alternativeLabel
+              sx={{
+                width: "100%",
+                "& .MuiStepIcon-root": {
+                  color: "#333333",
+                  fontSize: { xs: "1.2rem", md: "1.5rem" },
+                  "&.Mui-active": {
+                    color: "#C77DFF",
+                  },
+                  "&.Mui-completed": {
+                    color: "#C77DFF",
+                  },
+                },
+                "& .MuiStepLabel-label": {
+                  color: "#BDBDBD",
+                  fontFamily: "Roboto",
+                  fontSize: { xs: "12px", md: "16px" },
+                  fontWeight: 700,
+                  lineHeight: { xs: "20px", md: "24px" },
+                  textAlign: "center",
+                  "&.Mui-active": {
+                    color: "#C77DFF",
+                  },
+                  "&.Mui-completed": {
+                    color: "#C77DFF",
+                  },
+                },
+              }}
+            >
+              {steps.map((label) => (
+                <Step key={label}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
+            {/* Title and Divider */}
+            <Typography
+              mt={4}
+              variant="h5"
+              gutterBottom
+              sx={{
+                fontFamily: "Roboto",
+                fontSize: { xs: "20px", md: "24px" },
+                fontWeight: 500, // Set to 500 for the title
+                lineHeight: "36px",
+                textAlign: "left",
+                color: "rgba(249, 241, 230, 0.5)",
+              }}
+            >
+              Registration Successful! 🥳
+            </Typography>
+            <Divider
+              sx={{
+                background: "rgba(249, 241, 230, 0.5)",
+                height: "2px",
+                mb: 4,
+              }}
+            />
+
+            {/* Registration Details in 2-column format */}
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" },
+                gap: { xs: "10px", md: "10px 20px" },
+                backgroundColor: "transparent", // No background color
+                border: "1px solid rgba(249, 241, 230, 0.5)", // White border color and thickness
+                padding: { xs: "15px", md: "20px" },
+                borderRadius: 2,
+                color: "#F9F1E6",
+                alignItems: "start",
+              }}
+            >
+              {/* Column 1 */}
+              <Box>
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Name:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.name || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Registration Number:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.registerNumber || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>SRM Email:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.srmEmail || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Personal Email:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.personalEmail || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Year of Study:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.yearOfStudy || 'N/A'}</Typography>
+              </Box>
+
+              {/* Column 2 */}
+              <Box>
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>WhatsApp Number:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.whatsappNumber || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Phone Number:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.phoneNumber || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Course:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.course || 'N/A'}</Typography>
+
+                <Typography sx={{ fontWeight: 500, fontSize: { xs: "16px", md: "20px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>Department:</Typography>
+                <Typography sx={{ fontWeight: 400, fontSize: { xs: "12px", md: "15px" }, lineHeight: "36px", color: "rgba(249, 241, 230, 0.5)" }}>{formData.department || 'N/A'}</Typography>
+              </Box>
+            </Box>
+          </Paper>
+        ) : (
+          <Paper
+            sx={{
+              p: { xs: 2, md: 4 },
+              backgroundColor: "#111",
+              borderRadius: 2,
+              height: { md: "780px" },
+              width: { xs: "80vw", md: "100%" },
+              maxWidth: { xs: "400px", md: "590px" },
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+            }}
+          >
+            <Stepper
+              activeStep={activeStep}
+              alternativeLabel
+              sx={{
+                width: "100%",
+                "& .MuiStepIcon-root": {
+                  color: "#333333",
+                  fontSize: { xs: "1.2rem", md: "1.5rem" },
+                  "&.Mui-active": {
+                    color: "#C77DFF",
+                  },
+                  "&.Mui-completed": {
+                    color: "#C77DFF",
+                  },
+                },
+                "& .MuiStepLabel-label": {
+                  color: "#BDBDBD",
+                  fontFamily: "Roboto",
+                  fontSize: { xs: "12px", md: "16px" },
+                  fontWeight: 700,
+                  lineHeight: { xs: "20px", md: "24px" },
+                  textAlign: "center",
+                  "&.Mui-active": {
+                    color: "#C77DFF",
+                  },
+                  "&.Mui-completed": {
+                    color: "#C77DFF",
+                  },
+                },
+              }}
+            >
+              {steps.map((label) => (
+                <Step key={label}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
+
+            {/* Form Content */}
+            {/* Continue with the form fields and actions (Back, Next, Submit buttons) */}
+            {/* Add Typography and Divider for the section header */}
+            <Box sx={{ mt: 4 }}>
+              <Typography
+                variant="h5"
+                gutterBottom
+                sx={{
+                  fontFamily: "Roboto",
+                  fontSize: { xs: "20px", md: "24px" },
+                  fontWeight: 400,
+                  lineHeight: "28.13px",
+                  textAlign: "left",
+                  color: "rgba(249, 241, 230, 0.5)",
+                }}
+              >
+                {steps[activeStep]} Information {/* Dynamic label for each step */}
+              </Typography>
+              <Divider
+                sx={{
+                  background: "rgba(249, 241, 230, 0.5)",
+                  height: "2px",
+                  mb: 4,
+                }}
+              />
+            </Box>
+
+            {/* Removed the `onSubmit` from the form and use button event handlers */}
+            <Box
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "20px",
+                width: "100%",
+              }}
+            >
+              {activeStep === 0 && (
+                <>
+                  {/* About the Event */}
+                  <Box>
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                    >
+                      Hackathon Tracks
+                    </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        1. HealthTech & Preventive Care Intelligence
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        2. Inclusive FinTech & Financial Wellness
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        3. Climate Tech & Sustainability Execution
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        4. Agentic AI & Workforce Augmentation
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        5. Smart Infrastructure & Urban Resilience
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                    >
+                      Event Details
+                    </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Venue:</strong> Mini Hall 2
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Date:</strong> 3 & 4 April
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Team Size:</strong> 2-4 members
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Registration Fee:</strong> ₹200 per team
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="h6"
+                      gutterBottom
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                    >
+                      Prizes
+                    </Typography>
+                    <Box sx={{ pl: 2 }}>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>First Place:</strong> ₹15,000
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Second Place:</strong> ₹10,000
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                        <strong>Third & Fourth Place:</strong> Internship opportunities and coupons
+                      </Typography>
+                    </Box>
+                  </Box>
+                </>
+              )}
+
+              {activeStep === 1 && (
+                <>
+                  {/* Team Details - Only team info */}
+                  <Box>
+                    <Typography
+                      variant="subtitle1"
+                      gutterBottom
+                      sx={{ color: "white" }}
+                    >
+                      Team Name
+                    </Typography>
+                    <TextField
+                      placeholder="Enter your team name"
+                      name="teamName"
+                      value={formData.teamName}
+                      onChange={handleChange}
+                      error={!!errors.teamName}
+                      helperText={
+                        errors.teamName && (
+                          <Typography variant="body2" sx={errorStyle}>
+                            {errors.teamName}
+                          </Typography>
+                        )
+                      }
+                      variant="outlined"
+                      fullWidth
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          backgroundColor: "#F9F1E6",
+                          borderRadius: 1,
+                        },
+                        "& .MuiFormHelperText-root": {
+                          backgroundColor: "transparent",
+                        },
+                        "& .MuiOutlinedInput-root.Mui-error": {
+                          "& fieldset": {
+                            borderColor: "#F28B82",
+                          },
+                        },
+                      }}
+                    />
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="subtitle1"
+                      gutterBottom
+                      sx={{ color: "white" }}
+                    >
+                      Number of Team Members
+                    </Typography>
+                    <TextField
+                      select
+                      placeholder="Select number of members"
+                      name="numberOfMembers"
+                      value={formData.numberOfMembers}
+                      onChange={handleChange}
+                      error={!!errors.numberOfMembers}
+                      helperText={
+                        errors.numberOfMembers && (
+                          <Typography variant="body2" sx={errorStyle}>
+                            {errors.numberOfMembers}
+                          </Typography>
+                        )
+                      }
+                      variant="outlined"
+                      fullWidth
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          backgroundColor: "#F9F1E6",
+                          borderRadius: 1,
+                        },
+                        "& .MuiFormHelperText-root": {
+                          backgroundColor: "transparent",
+                        },
+                        "& .MuiOutlinedInput-root.Mui-error": {
+                          "& fieldset": {
+                            borderColor: "#F28B82",
+                          },
+                        },
+                      }}
+                    >
+                      <MenuItem value="2">2 Members</MenuItem>
+                      <MenuItem value="3">3 Members</MenuItem>
+                      <MenuItem value="4">4 Members</MenuItem>
+                    </TextField>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="subtitle1"
+                      gutterBottom
+                      sx={{ color: "white" }}
+                    >
+                      Choose Hackathon Track
+                    </Typography>
+                    <TextField
+                      select
+                      placeholder="Select a track"
+                      name="trackChoice"
+                      value={formData.trackChoice}
+                      onChange={handleChange}
+                      error={!!errors.trackChoice}
+                      helperText={
+                        errors.trackChoice && (
+                          <Typography variant="body2" sx={errorStyle}>
+                            {errors.trackChoice}
+                          </Typography>
+                        )
+                      }
+                      variant="outlined"
+                      fullWidth
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          backgroundColor: "#F9F1E6",
+                          borderRadius: 1,
+                        },
+                        "& .MuiFormHelperText-root": {
+                          backgroundColor: "transparent",
+                        },
+                        "& .MuiOutlinedInput-root.Mui-error": {
+                          "& fieldset": {
+                            borderColor: "#F28B82",
+                          },
+                        },
+                      }}
+                    >
+                      <MenuItem value="HealthTech & Preventive Care Intelligence">
+                        HealthTech & Preventive Care Intelligence
+                      </MenuItem>
+                      <MenuItem value="Inclusive FinTech & Financial Wellness">
+                        Inclusive FinTech & Financial Wellness
+                      </MenuItem>
+                      <MenuItem value="Climate Tech & Sustainability Execution">
+                        Climate Tech & Sustainability Execution
+                      </MenuItem>
+                      <MenuItem value="Agentic AI & Workforce Augmentation">
+                        Agentic AI & Workforce Augmentation
+                      </MenuItem>
+                      <MenuItem value="Smart Infrastructure & Urban Resilience">
+                        Smart Infrastructure & Urban Resilience
+                      </MenuItem>
+                    </TextField>
+                  </Box>
+                </>
+              )}
+
+              {/* Dynamic Member Steps */}
+              {(() => {
+                const numMembers = parseInt(formData.numberOfMembers) || 0;
+                const memberIndex = activeStep - 2;
+                
+                if (activeStep >= 2 && activeStep < 2 + numMembers && formData.members[memberIndex]) {
+                  const member = formData.members[memberIndex];
+                  const isLeader = memberIndex === 0;
+                  
+                  return (
+                    <>
+                      {/* Common fields for all members */}
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
+                          Name
+                        </Typography>
+                        <TextField
+                          placeholder="Enter full name"
+                          value={member.name}
+                          onChange={(e) => handleMemberChange(memberIndex, "name", e.target.value)}
+                          error={!!errors.name}
+                          helperText={
+                            errors.name && (
+                              <Typography variant="body2" sx={errorStyle}>
+                                {errors.name}
+                              </Typography>
+                            )
+                          }
+                          variant="outlined"
+                          fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              backgroundColor: "#F9F1E6",
+                              borderRadius: 1,
+                            },
+                            "& .MuiFormHelperText-root": {
+                              backgroundColor: "transparent",
+                            },
+                            "& .MuiOutlinedInput-root.Mui-error": {
+                              "& fieldset": {
+                                borderColor: "#F28B82",
+                              },
+                            },
+                          }}
+                        />
+                      </Box>
+
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
+                          Register Number
+                        </Typography>
+                        <TextField
+                          placeholder="Enter register number (e.g., RA2111111111111)"
+                          value={member.registerNumber}
+                          onChange={(e) => handleRegisterNumberChange(memberIndex, e.target.value)}
+                          error={!!errors.registerNumber}
+                          helperText={
+                            errors.registerNumber && (
+                              <Typography variant="body2" sx={errorStyle}>
+                                {errors.registerNumber}
+                              </Typography>
+                            )
+                          }
+                          variant="outlined"
+                          fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              backgroundColor: "#F9F1E6",
+                              borderRadius: 1,
+                            },
+                            "& .MuiFormHelperText-root": {
+                              backgroundColor: "transparent",
+                            },
+                            "& .MuiOutlinedInput-root.Mui-error": {
+                              "& fieldset": {
+                                borderColor: "#F28B82",
+                              },
+                            },
+                          }}
+                        />
+                      </Box>
+
+                      {/* Leader-specific fields */}
+                      {isLeader && (
+                        <>
+                          <Box>
+                            <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
+                              Personal Email
+                            </Typography>
+                            <TextField
+                              placeholder="Enter personal email"
+                              value={member.personalEmail}
+                              onChange={(e) => handleMemberChange(memberIndex, "personalEmail", e.target.value)}
+                              error={!!errors.personalEmail}
+                              helperText={
+                                errors.personalEmail && (
+                                  <Typography variant="body2" sx={errorStyle}>
+                                    {errors.personalEmail}
+                                  </Typography>
+                                )
+                              }
+                              variant="outlined"
+                              fullWidth
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  backgroundColor: "#F9F1E6",
+                                  borderRadius: 1,
+                                },
+                                "& .MuiFormHelperText-root": {
+                                  backgroundColor: "transparent",
+                                },
+                                "& .MuiOutlinedInput-root.Mui-error": {
+                                  "& fieldset": {
+                                    borderColor: "#F28B82",
+                                  },
+                                },
+                              }}
+                            />
+                          </Box>
+
+                          <Box>
+                            <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
+                              Phone Number
+                            </Typography>
+                            <TextField
+                              placeholder="Enter phone number"
+                              value={member.phoneNumber}
+                              onChange={(e) => handlePhoneNumberChange(e.target.value)}
+                              error={!!errors.phoneNumber}
+                              helperText={
+                                errors.phoneNumber && (
+                                  <Typography variant="body2" sx={errorStyle}>
+                                    {errors.phoneNumber}
+                                  </Typography>
+                                )
+                              }
+                              variant="outlined"
+                              fullWidth
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  backgroundColor: "#F9F1E6",
+                                  borderRadius: 1,
+                                },
+                                "& .MuiFormHelperText-root": {
+                                  backgroundColor: "transparent",
+                                },
+                                "& .MuiOutlinedInput-root.Mui-error": {
+                                  "& fieldset": {
+                                    borderColor: "#F28B82",
+                                  },
+                                },
+                              }}
+                            />
+                          </Box>
+                        </>
+                      )}
+
+                      {/* Residential Status for all members */}
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
+                          Residential Status
+                        </Typography>
+                        <TextField
+                          select
+                          placeholder="Select residential status"
+                          value={member.residentialStatus}
+                          onChange={(e) => handleMemberChange(memberIndex, "residentialStatus", e.target.value)}
+                          error={!!errors.residentialStatus}
+                          helperText={
+                            errors.residentialStatus && (
+                              <Typography variant="body2" sx={errorStyle}>
+                                {errors.residentialStatus}
+                              </Typography>
+                            )
+                          }
+                          variant="outlined"
+                          fullWidth
+                          sx={{
+                            "& .MuiOutlinedInput-root": {
+                              backgroundColor: "#F9F1E6",
+                              borderRadius: 1,
+                            },
+                            "& .MuiFormHelperText-root": {
+                              backgroundColor: "transparent",
+                            },
+                            "& .MuiOutlinedInput-root.Mui-error": {
+                              "& fieldset": {
+                                borderColor: "#F28B82",
+                              },
+                            },
+                          }}
+                        >
+                          <MenuItem value="Hosteller">Hosteller</MenuItem>
+                          <MenuItem value="Day Scholar">Day Scholar</MenuItem>
+                        </TextField>
+                      </Box>
+                    </>
+                  );
+                }
+                return null;
+              })()}
+
+              {/* Payment Step */}
+              {(() => {
+                const numMembers = parseInt(formData.numberOfMembers) || 0;
+                if (activeStep === 2 + numMembers) {
+                  return (
+                    <>
+                      <Box>
+                        <Typography variant="h6" gutterBottom sx={{ color: "#C77DFF", mb: 2 }}>
+                          Payment Information
+                        </Typography>
+                        <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 3 }}>
+                          Registration Fee: <strong>₹200 per team</strong>
+                        </Typography>
+
+                        {/* QR Code Placeholder */}
+                        <Box
+                          sx={{
+                            width: "100%",
+                            height: "300px",
+                            backgroundColor: "rgba(249, 241, 230, 0.1)",
+                            border: "2px dashed rgba(249, 241, 230, 0.3)",
+                            borderRadius: 2,
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            mb: 3,
+                          }}
+                        >
+                          <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.5)" }}>
+                            UPI QR Code will be displayed here
+                          </Typography>
+                        </Box>
+
+                        <Typography variant="subtitle1" gutterBottom sx={{ color: "white", mt: 3 }}>
+                          Upload Payment Proof
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.7)", mb: 2 }}>
+                          Please upload a screenshot of your payment confirmation
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          fullWidth
+                          sx={{
+                            borderColor: "#C77DFF",
+                            color: "#F9F1E6",
+                            padding: "12px",
+                            mb: 1,
+                            "&:hover": {
+                              borderColor: "#B565E8",
+                              backgroundColor: "rgba(199, 125, 255, 0.1)",
+                            },
+                          }}
+                        >
+                          Choose File
+                          <input
+                            type="file"
+                            hidden
+                            accept="image/*"
+                            onChange={handleFileChange}
+                          />
+                        </Button>
+                        {formData.paymentProof && (
+                          <Typography variant="body2" sx={{ color: "#C77DFF", mt: 1 }}>
+                            Selected: {formData.paymentProof.name}
+                          </Typography>
+                        )}
+                        {errors.paymentProof && (
+                          <Typography variant="body2" sx={errorStyle}>
+                            {errors.paymentProof}
+                          </Typography>
+                        )}
+                      </Box>
+                    </>
+                  );
+                }
+                return null;
+              })()}
+
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Button
+                  disabled={activeStep === 0}
+                  onClick={handleBack}
+                  sx={{ mt: 2, color: "white" }}
+                >
+                  Back
+                </Button>
+                {activeStep === steps.length - 1 ? (
+                  <Button
+                    onClick={handleSubmit}
+                    variant="contained"
+                    color="primary"
+                    sx={{
+                      mt: 2,
+                      padding: "10px",
+                      fontWeight: "bold",
+                      backgroundColor: "#C77DFF",
+                    }}
+                    disabled={loading} // Disable the button while submitting
+                  >
+                    {loading ? "Submitting..." : "Submit"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleNext}
+                    sx={{
+                      mt: 2,
+                      padding: "10px",
+                      fontWeight: "bold",
+                      backgroundColor: "#C77DFF",
+                      minWidth: "210px",
+                    }}
+                  >
+                    Continue
+                  </Button>
+                )}
+              </Box>
+            </Box>
+
+            {/* Duplicate Registration Dialog */}
+            <Dialog
+              open={duplicateDialogOpen}
+              onClose={() => setDuplicateDialogOpen(false)}
+              PaperProps={{
+                sx: {
+                  backgroundColor: "#111",
+                  borderRadius: 2,
+                  padding: 2,
+                },
+              }}
+            >
+              <DialogTitle
+                sx={{
+                  fontFamily: "SF Pro Display, sans-serif",
+                  fontSize: "24px",
+                  fontWeight: 700,
+                  lineHeight: "28px",
+                  textAlign: "center",
+                  color: "#F9F1E6",
+                  paddingBottom: "8px",
+                }}
+              >
+                Oops! You&apos;ve Already Registered
+              </DialogTitle>
+              <DialogContent>
+                <DialogContentText
+                  sx={{
+                    fontFamily: "Roboto, sans-serif",
+                    fontSize: "16px",
+                    fontWeight: 400,
+                    lineHeight: "24px",
+                    color: "rgba(249, 241, 230, 0.7)",
+                    textAlign: "center",
+                  }}
+                >
+                  It looks like you&apos;ve already claimed your spot with this registration number and SRM email.
+                  <br />
+                  We’re thrilled to have you onboard. Stay tuned for the event updates!
+                </DialogContentText>
+              </DialogContent>
+              <DialogActions
+                sx={{
+                  justifyContent: "center", // Center align the button
+                }}
+              >
+                <Button
+                  onClick={() => setDuplicateDialogOpen(false)}
+                  sx={{
+                    backgroundColor: "#C77DFF",
+                    color: "#F9F1E6",
+                    "&:hover": {
+                      backgroundColor: "#B565E8",
+                    },
+                    padding: "8px 24px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Got it!
+                </Button>
+              </DialogActions>
+            </Dialog>
+          </Paper>
+        )}
+      </Box>
+    </Container>
+  );
+};
+
+export default Form;
