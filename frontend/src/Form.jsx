@@ -19,6 +19,7 @@ import {
   Stepper,
 } from "@mui/material";
 import { motion } from "framer-motion";
+import bg from "../assets/images/bg-space.jpeg";
 
 const Form = () => {
   const [formData, setFormData] = useState({
@@ -280,7 +281,7 @@ const Form = () => {
           minHeight: { xs: "60vh", md: "94.5vh" },
           width: { xs: "100%", md: "50%" },
           backgroundColor: "#111111",
-          backgroundImage: "url('/assets/images/bg-space.jpeg')",
+          backgroundImage: `url(${bg})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
