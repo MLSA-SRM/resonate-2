@@ -59,6 +59,27 @@ const Form = () => {
     }
   }, [activeStep]);
 
+  useEffect(() => {
+    const wakeUpBackend = async () => {
+      try {
+        await fetch("https://resonate-2.onrender.com/api/form", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      } catch {
+        console.log("Backend wake-up call sent");
+      }
+    };
+
+    const timer = setTimeout(() => {
+      wakeUpBackend();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const getSteps = () => {
     const baseSteps = ["About", "Team Details"];
     const numMembers = parseInt(formData.numberOfMembers) || 0;
@@ -109,7 +130,6 @@ const Form = () => {
         newErrors.registerNumber = "Register number must be in the format RA followed by 13 digits";
       }
       
-      // Leader-specific validations (Member 1)
       if (memberIndex === 0) {
         if (!member || !member.personalEmail || !member.personalEmail.trim()) {
           newErrors.personalEmail = "Personal email is required";
@@ -124,7 +144,6 @@ const Form = () => {
         }
       }
     } else if (step === 2 + numMembers) {
-      // Payment validation
       if (!formData.paymentProof) {
         newErrors.paymentProof = "Payment proof is required";
       }
