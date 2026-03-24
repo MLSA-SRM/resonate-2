@@ -91,10 +91,6 @@ const Form = () => {
         newErrors.registerNumber = "Register number must be in the format RA followed by 13 digits";
       }
       
-      if (!member || !member.residentialStatus) {
-        newErrors.residentialStatus = "Please select residential status";
-      }
-      
       // Leader-specific validations (Member 1)
       if (memberIndex === 0) {
         if (!member || !member.personalEmail || !member.personalEmail.trim()) {
@@ -132,7 +128,7 @@ const Form = () => {
         formData.members[index] || {
           name: "",
           registerNumber: "",
-          residentialStatus: "",
+          hostelName: "",
           // Leader-specific fields (only for index 0)
           ...(index === 0 ? {
             personalEmail: "",
@@ -216,7 +212,29 @@ const Form = () => {
         formDataToSend.append('teamName', formData.teamName);
         formDataToSend.append('numberOfMembers', formData.numberOfMembers);
         formDataToSend.append('trackChoice', formData.trackChoice);
-        formDataToSend.append('members', JSON.stringify(formData.members));
+        
+        // Process members data to include hostel details if applicable
+        const membersData = formData.members.map(member => {
+          const memberData = {
+            name: member.name,
+            registerNumber: member.registerNumber,
+          };
+          
+          // Add hostel details if provided
+          if (member.hostelName && member.hostelName.trim()) {
+            memberData.hostelName = member.hostelName;
+          }
+          
+          // Add leader-specific fields for first member
+          if (formData.members.indexOf(member) === 0) {
+            memberData.personalEmail = member.personalEmail;
+            memberData.phoneNumber = member.phoneNumber;
+          }
+          
+          return memberData;
+        });
+        
+        formDataToSend.append('members', JSON.stringify(membersData));
         formDataToSend.append('paymentProof', formData.paymentProof);
 
         const response = await axios.post(
@@ -514,7 +532,7 @@ const Form = () => {
                   color: "rgba(249, 241, 230, 0.5)",
                 }}
               >
-                {steps[activeStep]} Information {/* Dynamic label for each step */}
+                {activeStep === 0 ? "About the Event" : `${steps[activeStep]} Information`}
               </Typography>
               <Divider
                 sx={{
@@ -541,24 +559,24 @@ const Form = () => {
                     <Typography
                       variant="h6"
                       gutterBottom
-                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 1, fontSize: { xs: "16px", md: "18px" } }}
                     >
                       Hackathon Tracks
                     </Typography>
                     <Box sx={{ pl: 2 }}>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         1. HealthTech & Preventive Care Intelligence
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         2. Inclusive FinTech & Financial Wellness
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         3. Climate Tech & Sustainability Execution
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         4. Agentic AI & Workforce Augmentation
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         5. Smart Infrastructure & Urban Resilience
                       </Typography>
                     </Box>
@@ -568,21 +586,21 @@ const Form = () => {
                     <Typography
                       variant="h6"
                       gutterBottom
-                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 1, fontSize: { xs: "16px", md: "18px" } }}
                     >
                       Event Details
                     </Typography>
                     <Box sx={{ pl: 2 }}>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>Venue:</strong> Mini Hall 2
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>Date:</strong> 3 & 4 April
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>Team Size:</strong> 2-4 members
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>Registration Fee:</strong> ₹200 per team
                       </Typography>
                     </Box>
@@ -592,19 +610,22 @@ const Form = () => {
                     <Typography
                       variant="h6"
                       gutterBottom
-                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 2 }}
+                      sx={{ color: "#C77DFF", fontWeight: 600, mb: 1, fontSize: { xs: "16px", md: "18px" } }}
                     >
                       Prizes
                     </Typography>
                     <Box sx={{ pl: 2 }}>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>First Place:</strong> ₹15,000
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
                         <strong>Second Place:</strong> ₹10,000
                       </Typography>
-                      <Typography variant="body1" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 1 }}>
-                        <strong>Third & Fourth Place:</strong> Internship opportunities and coupons
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
+                        <strong>Third Place:</strong> Internship opportunities and coupons
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "rgba(249, 241, 230, 0.9)", mb: 0.5, fontSize: { xs: "12px", md: "14px" } }}>
+                        <strong>Fourth Place:</strong> Internship opportunities and coupons
                       </Typography>
                     </Box>
                   </Box>
@@ -915,21 +936,20 @@ const Form = () => {
                         </>
                       )}
 
-                      {/* Residential Status for all members */}
+                      {/* Hostel Details - Optional for hostellers */}
                       <Box>
                         <Typography variant="subtitle1" gutterBottom sx={{ color: "white" }}>
-                          Residential Status
+                          If Hosteller, Enter Hostel Details
                         </Typography>
                         <TextField
-                          select
-                          placeholder="Select residential status"
-                          value={member.residentialStatus}
-                          onChange={(e) => handleMemberChange(memberIndex, "residentialStatus", e.target.value)}
-                          error={!!errors.residentialStatus}
+                          placeholder="Hostel name & Room number (optional)"
+                          value={member.hostelName || ""}
+                          onChange={(e) => handleMemberChange(memberIndex, "hostelName", e.target.value)}
+                          error={!!errors.hostelName}
                           helperText={
-                            errors.residentialStatus && (
+                            errors.hostelName && (
                               <Typography variant="body2" sx={errorStyle}>
-                                {errors.residentialStatus}
+                                {errors.hostelName}
                               </Typography>
                             )
                           }
@@ -949,10 +969,7 @@ const Form = () => {
                               },
                             },
                           }}
-                        >
-                          <MenuItem value="Hosteller">Hosteller</MenuItem>
-                          <MenuItem value="Day Scholar">Day Scholar</MenuItem>
-                        </TextField>
+                        />
                       </Box>
                     </>
                   );
